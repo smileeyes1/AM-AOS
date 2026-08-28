@@ -27,9 +27,6 @@ class MissionPhase(str, Enum):
     RELEASE = "RELEASE"
 
 
-TERMINAL = {Decision.PASS, Decision.CONDITIONAL_PASS, Decision.FAIL, Decision.NO_GO, Decision.NOT_PROVEN, Decision.BLOCKED}
-
-
 @dataclass(frozen=True)
 class MissionPolicy:
     max_attempts: int = 3
@@ -88,6 +85,9 @@ class AutonomyController:
                 continue
             self.engine.execute(task.task_id, agent_id)
 
+        # Freeze the pre-repair state before any adversarial mutation.
+        self.engine.capture_regression_baseline()
+
         run.phase = MissionPhase.VERIFY
         for task in tasks:
             evidence = tuple(self.engine.evidence.items[e] for e in task.evidence_ids if e in self.engine.evidence.items)
@@ -108,12 +108,14 @@ class AutonomyController:
                 run.decisions.append(Decision.PASS)
 
         run.phase = MissionPhase.BREAK
+        repaired = False
         for task in tasks:
             if break_test is not None and break_test(task.result):
                 task.status = Decision.FAIL
                 run.decisions.append(Decision.FAIL)
                 run.findings.append(f"adversarial fault detected: {task.task_id}")
                 if repair is not None:
+                    repaired = True
                     run.phase = MissionPhase.REPAIR
                     task.result = repair(task.result)
                     run.phase = MissionPhase.REVERIFY
@@ -124,10 +126,10 @@ class AutonomyController:
                         run.findings.append(f"repair verification failed: {task.task_id}")
 
         run.phase = MissionPhase.REGRESSION
-        if self.policy.require_regression_after_repair and any("repair" in x for x in run.findings):
+        if repaired and self.policy.require_regression_after_repair:
             if not self.engine.regression_check():
                 run.decisions.append(Decision.NO_GO)
-                run.findings.append("regression failed")
+                run.findings.append("regression failed after repair")
 
         run.phase = MissionPhase.EVIDENCE_AUDIT
         if not self.engine.audit.verify_chain():
@@ -136,8 +138,10 @@ class AutonomyController:
 
         run.phase = MissionPhase.CLAIM_SCOPE
         run.phase = MissionPhase.DECIDE
-        if Decision.NO_GO in run.decisions or Decision.FAIL in run.decisions:
-            final = Decision.NO_GO if Decision.NO_GO in run.decisions else Decision.FAIL
+        if Decision.NO_GO in run.decisions:
+            final = Decision.NO_GO
+        elif Decision.FAIL in run.decisions:
+            final = Decision.FAIL
         elif Decision.NOT_PROVEN in run.decisions or Decision.BLOCKED in run.decisions:
             final = Decision.NOT_PROVEN
         elif tasks:
@@ -147,5 +151,9 @@ class AutonomyController:
         run.decisions.append(final)
 
         run.phase = MissionPhase.RELEASE
-        run.released = final in {Decision.PASS, Decision.CONDITIONAL_PASS} and self.policy.allow_direct_delivery and not self.policy.require_external_approval
+        run.released = (
+            final in {Decision.PASS, Decision.CONDITIONAL_PASS}
+            and self.policy.allow_direct_delivery
+            and not self.policy.require_external_approval
+        )
         return run
