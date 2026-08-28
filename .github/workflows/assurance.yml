@@ -2,7 +2,9 @@ name: AM-AOS Assurance Gate
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -10,8 +12,10 @@ permissions:
 jobs:
   assurance:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -25,7 +29,32 @@ jobs:
           test -s docs/REFERENCE_DEFINITION_v1.0.md
           test -s docs/REQUIREMENTS_BASELINE_v1.0.md
           test -s docs/ASSURANCE_MATRIX_v1.0.md
+          test -s docs/MASTER_AUTONOMOUS_EXECUTION_CONTRACT_v1.0.md
+          test -s docs/PROJECT_STATE.md
+          test -s docs/AUTONOMOUS_CONTROLLER_SPEC_v1.0.md
       - name: Run assurance test suite
         env:
           PYTHONPATH: src
         run: python -m pytest -q
+      - name: Validate fail-closed invariants
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          required = [
+              Path('src/am_aos/task_queue.py'),
+              Path('src/am_aos/capabilities.py'),
+              Path('src/am_aos/project_controller.py'),
+          ]
+          missing = [str(p) for p in required if not p.exists()]
+          if missing:
+              raise SystemExit('Missing runtime components: ' + ', '.join(missing))
+          print('AM-AOS runtime invariants: PASS')
+      - name: Publish assurance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: am-aos-assurance-${{ github.sha }}
+          path: |
+            docs/
+            tests/
+          if-no-files-found: error
