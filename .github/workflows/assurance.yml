@@ -9,13 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate mission schema exists
-        run: test -s schemas/mission.schema.json
-      - name: Validate required documents
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install test runner
+        run: python -m pip install --upgrade pip pytest
+      - name: Validate required baseline
         run: |
+          test -s schemas/mission.schema.json
           test -s docs/PROJECT_OPERATING_CONTRACT.md
           test -s docs/REFERENCE_DEFINITION_v1.0.md
           test -s docs/REQUIREMENTS_BASELINE_v1.0.md
           test -s docs/ASSURANCE_MATRIX_v1.0.md
-      - name: Placeholder for executable assurance suite
-        run: echo "Assurance gate initialized; runtime test suite is the next implementation gate."
+      - name: Run assurance tests
+        run: pytest
