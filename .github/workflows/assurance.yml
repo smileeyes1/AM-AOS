@@ -26,4 +26,6 @@ jobs:
           test -s docs/REQUIREMENTS_BASELINE_v1.0.md
           test -s docs/ASSURANCE_MATRIX_v1.0.md
       - name: Run assurance test suite
+        env:
+          PYTHONPATH: src
         run: python -m pytest -q
