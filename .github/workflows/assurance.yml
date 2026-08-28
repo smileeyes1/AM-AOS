@@ -32,7 +32,11 @@ jobs:
           test -s docs/MASTER_AUTONOMOUS_EXECUTION_CONTRACT_v1.0.md
           test -s docs/PROJECT_STATE.md
           test -s docs/AUTONOMOUS_CONTROLLER_SPEC_v1.0.md
-      - name: Run assurance test suite
+      - name: Compile source
+        env:
+          PYTHONPATH: src
+        run: python -m compileall -q src
+      - name: Run assurance and regression suite
         env:
           PYTHONPATH: src
         run: python -m pytest -q
@@ -44,17 +48,23 @@ jobs:
               Path('src/am_aos/task_queue.py'),
               Path('src/am_aos/capabilities.py'),
               Path('src/am_aos/project_controller.py'),
+              Path('src/am_aos/gates.py'),
+              Path('src/am_aos/delivery.py'),
           ]
           missing = [str(p) for p in required if not p.exists()]
           if missing:
               raise SystemExit('Missing runtime components: ' + ', '.join(missing))
           print('AM-AOS runtime invariants: PASS')
+      - name: Build assurance evidence
+        if: always()
+        run: |
+          mkdir -p evidence
+          printf 'commit=%s\nrun=%s\nworkflow=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_WORKFLOW" > evidence/ci-context.txt
+          find tests -type f -name 'test_*.py' | sort > evidence/test-inventory.txt
       - name: Publish assurance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: am-aos-assurance-${{ github.sha }}
-          path: |
-            docs/
-            tests/
+          path: evidence/
           if-no-files-found: error
