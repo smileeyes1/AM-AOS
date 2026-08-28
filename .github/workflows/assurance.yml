@@ -2,8 +2,10 @@ name: assurance
 on:
   push:
   pull_request:
+permissions:
+  contents: read
 jobs:
-  test:
+  assurance:
     runs-on: ubuntu-latest
     strategy:
       matrix: {python-version: ['3.11','3.12','3.13']}
@@ -11,7 +13,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: {python-version: '${{ matrix.python-version }}'}
-      - run: python -m pip install -U pip pytest
-      - run: python -m pytest
+      - run: python -m pip install --upgrade pip pytest
+      - name: Validate required baseline documents
+        run: |
+          test -s schemas/mission.schema.json
+          test -s docs/PROJECT_OPERATING_CONTRACT.md
+          test -s docs/REFERENCE_DEFINITION_v1.0.md
+          test -s docs/REQUIREMENTS_BASELINE_v1.0.md
+          test -s docs/ASSURANCE_MATRIX_v1.0.md
+      - run: python -m pytest -q
       - run: python -m compileall -q src tests
       - run: python -m am_aos --self-check
