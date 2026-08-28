@@ -1,33 +1,31 @@
 from __future__ import annotations
-from enum import Enum
+from dataclasses import dataclass, asdict
+import json
+from pathlib import Path
 
+@dataclass
+class MissionState:
+    mission_id: str
+    goal: str
+    constitutional_constraints: tuple[str, ...]
+    authority_ceiling: str
+    current_gate: str
+    status: str = "RUNNING"
+    last_verified_commit: str | None = None
+    last_successful_test: str | None = None
+    next_action: str | None = None
+    release_status: str = "NOT_READY"
+    blocker: str | None = None
 
-class MissionState(str, Enum):
-    DRAFT = "DRAFT"
-    READY = "READY"
-    RUNNING = "RUNNING"
-    RECOVERY = "RECOVERY"
-    VERIFYING = "VERIFYING"
-    PASSED = "PASSED"
-    FAILED = "FAILED"
-    BLOCKED = "BLOCKED"
-    NO_GO = "NO-GO"
+class StateStore:
+    def __init__(self, path: str | Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
 
+    def save(self, state: MissionState) -> None:
+        tmp = self.path.with_suffix(self.path.suffix + ".tmp")
+        tmp.write_text(json.dumps(asdict(state), indent=2, sort_keys=True), encoding="utf-8")
+        tmp.replace(self.path)
 
-_ALLOWED = {
-    MissionState.DRAFT: {MissionState.READY, MissionState.NO_GO},
-    MissionState.READY: {MissionState.RUNNING, MissionState.NO_GO},
-    MissionState.RUNNING: {MissionState.VERIFYING, MissionState.RECOVERY, MissionState.FAILED, MissionState.BLOCKED, MissionState.NO_GO},
-    MissionState.RECOVERY: {MissionState.RUNNING, MissionState.NO_GO, MissionState.FAILED},
-    MissionState.VERIFYING: {MissionState.PASSED, MissionState.FAILED, MissionState.BLOCKED, MissionState.NO_GO},
-    MissionState.PASSED: set(),
-    MissionState.FAILED: {MissionState.RECOVERY, MissionState.NO_GO},
-    MissionState.BLOCKED: {MissionState.RECOVERY, MissionState.NO_GO},
-    MissionState.NO_GO: set(),
-}
-
-
-def transition(current: MissionState, target: MissionState) -> MissionState:
-    if target not in _ALLOWED[current]:
-        raise ValueError(f"Illegal mission transition: {current.value} -> {target.value}")
-    return target
+    def load(self) -> MissionState:
+        return MissionState(**json.loads(self.path.read_text(encoding="utf-8")))

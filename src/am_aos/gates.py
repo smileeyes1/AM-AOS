@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
+from typing import Mapping
 
 class GateDecision(str, Enum):
     PASS = "PASS"
@@ -15,16 +16,14 @@ class Gate:
     required_checks: tuple[str, ...]
 
 class GateEngine:
-    """Fail-closed gate evaluator. Unknown/missing checks never become PASS."""
+    """Fail-closed, deterministic gate evaluator."""
     def __init__(self, gates: tuple[Gate, ...]):
         self.gates = {g.gate_id: g for g in gates}
 
-    def evaluate(self, gate_id: str, checks: dict[str, bool], blockers: tuple[str, ...] = ()) -> GateDecision:
+    def evaluate(self, gate_id: str, checks: Mapping[str, bool], blockers: tuple[str, ...] = ()) -> GateDecision:
         gate = self.gates[gate_id]
         if blockers:
             return GateDecision.BLOCKED
         if any(name not in checks for name in gate.required_checks):
             return GateDecision.NOT_READY
-        if not all(checks[name] for name in gate.required_checks):
-            return GateDecision.NO_GO
-        return GateDecision.PASS
+        return GateDecision.PASS if all(checks[name] for name in gate.required_checks) else GateDecision.NO_GO

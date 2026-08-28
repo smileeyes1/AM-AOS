@@ -1,56 +1,54 @@
-name: AM-AOS Autonomous Assurance Loop
+name: AM-AOS Autonomous Assurance
 
 on:
+  pull_request:
+  push:
+    branches: [main, 'feat/**']
   workflow_dispatch:
   schedule:
     - cron: '*/30 * * * *'
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: am-aos-autonomous-assurance
+  group: am-aos-assurance-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  assurance-loop:
+  assurance:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - name: Compile
+        env: {PYTHONPATH: src}
+        run: python -m compileall -q src
       - name: Install test runner
         run: python -m pip install --upgrade pip pytest
-      - name: Compile
-        env:
-          PYTHONPATH: src
-        run: python -m compileall -q src
-      - name: Full regression
-        env:
-          PYTHONPATH: src
+      - name: Regression
+        env: {PYTHONPATH: src}
         run: python -m pytest -q
-      - name: Verify mission-control contracts
+      - name: Assurance contract checks
         run: |
-          test -s docs/AUTONOMOUS_MISSION_CONTROL_v1.0.md
-          test -s docs/MASTER_AUTONOMOUS_EXECUTION_CONTRACT_v1.0.md
           test -s src/am_aos/task_queue.py
           test -s src/am_aos/controller.py
+          test -s src/am_aos/autonomous_controller.py
+          test -s src/am_aos/evidence.py
           test -s src/am_aos/gates.py
           test -s src/am_aos/delivery.py
-      - name: Produce resumable assurance marker
+          test -s src/am_aos/state.py
+      - name: Evidence marker
+        if: always()
         run: |
           mkdir -p evidence
-          printf 'status=TESTED\ncommit=%s\nrun=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > evidence/autonomous-assurance.txt
-      - name: Upload evidence
+          printf 'commit=%s\nrun=%s\nstatus=TEST_EXECUTED\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" > evidence/assurance.txt
+      - uses: actions/upload-artifact@v4
         if: always()
-        uses: actions/upload-artifact@v4
         with:
-          name: autonomous-assurance-${{ github.sha }}
+          name: assurance-${{ github.sha }}
           path: evidence/
           if-no-files-found: error

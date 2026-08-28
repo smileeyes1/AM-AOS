@@ -1,62 +1,44 @@
 from __future__ import annotations
-
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
-from hashlib import sha256
-import json
-from typing import Any
-
-
-def utc_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def canonical_hash(value: Any) -> str:
-    payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str).encode()
-    return sha256(payload).hexdigest()
-
+import hashlib, json
+from pathlib import Path
 
 @dataclass(frozen=True)
-class EvidenceRecord:
+class Evidence:
     evidence_id: str
-    task_id: str
     claim: str
-    value: Any
-    source: str
-    sufficient: bool
-    content_hash: str
-    created_at: str
-
+    scope: str
+    test: str
+    result: str
+    artifact: str
+    version: str
+    timestamp: str
+    sha256: str
 
 class EvidenceLedger:
-    def __init__(self):
-        self._records: dict[str, EvidenceRecord] = {}
+    def __init__(self, path: str | Path):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
 
-    def append(self, evidence_id: str, task_id: str, claim: str, value: Any,
-               source: str, sufficient: bool) -> EvidenceRecord:
-        if evidence_id in self._records:
-            raise ValueError("duplicate evidence id")
-        record = EvidenceRecord(
-            evidence_id=evidence_id,
-            task_id=task_id,
-            claim=claim,
-            value=value,
-            source=source,
-            sufficient=bool(sufficient),
-            content_hash=canonical_hash(value),
-            created_at=utc_now(),
-        )
-        self._records[evidence_id] = record
-        return record
+    def append(self, evidence_id: str, claim: str, scope: str, test: str,
+               result: str, artifact: str, version: str) -> Evidence:
+        payload = json.dumps({"evidence_id": evidence_id, "claim": claim,
+            "scope": scope, "test": test, "result": result,
+            "artifact": artifact, "version": version}, sort_keys=True).encode()
+        item = Evidence(evidence_id, claim, scope, test, result, artifact, version,
+                        datetime.now(timezone.utc).isoformat(), hashlib.sha256(payload).hexdigest())
+        with self.path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(asdict(item), sort_keys=True) + "\n")
+        return item
 
-    def get(self, evidence_id: str) -> EvidenceRecord:
-        return self._records[evidence_id]
-
-    def sufficient(self, evidence_ids: list[str]) -> bool:
-        return bool(evidence_ids) and all(
-            eid in self._records and self._records[eid].sufficient
-            for eid in evidence_ids
-        )
-
-    def all(self) -> tuple[EvidenceRecord, ...]:
-        return tuple(self._records.values())
+    def verify(self) -> bool:
+        if not self.path.exists():
+            return True
+        for line in self.path.read_text(encoding="utf-8").splitlines():
+            item = json.loads(line)
+            base = {k: item[k] for k in ("evidence_id", "claim", "scope", "test", "result", "artifact", "version")}
+            expected = hashlib.sha256(json.dumps(base, sort_keys=True).encode()).hexdigest()
+            if expected != item.get("sha256"):
+                return False
+        return True
