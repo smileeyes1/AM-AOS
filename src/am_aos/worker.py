@@ -3,14 +3,15 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 import subprocess
+import sys
 import time
 from typing import Sequence
 
 
 @dataclass(frozen=True)
 class SandboxPolicy:
-    timeout_seconds: int = 30
-    allowed_executables: tuple[str, ...] = ("python",)
+    timeout_seconds: float = 0.5
+    allowed_executables: tuple[str, ...] = ("python", "python3")
 
 
 @dataclass(frozen=True)
@@ -38,8 +39,11 @@ class SandboxWorker:
             raise PermissionError(f"executable not allowed: {executable}")
         started = time.monotonic()
         try:
+            command = list(argv)
+            if executable == "python":
+                command[0] = sys.executable
             completed = subprocess.run(
-                list(argv), cwd=self.root, capture_output=True, text=True,
+                command, cwd=self.root, capture_output=True, text=True,
                 timeout=self.policy.timeout_seconds, check=False,
             )
             status = "PASS" if completed.returncode == 0 else "FAIL"
