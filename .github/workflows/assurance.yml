@@ -8,6 +8,7 @@ jobs:
   assurance:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix: {python-version: ['3.11','3.12','3.13']}
     steps:
       - uses: actions/checkout@v4
@@ -25,7 +26,7 @@ jobs:
       - name: Run tests and capture evidence
         run: |
           mkdir -p .assurance
-          python -m pytest -q 2>&1 | tee .assurance/pytest.txt
+          python -m pytest -q --junitxml=.assurance/pytest.xml 2>&1 | tee .assurance/pytest.txt
       - name: Compile source and tests
         run: python -m compileall -q src tests
       - name: Runtime self-check
@@ -41,7 +42,15 @@ jobs:
             echo ''
             echo "- Commit: `${GITHUB_SHA}`"
             echo "- Python: `${{ matrix.python-version }}`"
-            echo "- Tests: `$(cat .assurance/pytest.txt 2>/dev/null || echo unavailable)`"
+            echo "- Tests: `$(tail -n 1 .assurance/pytest.txt 2>/dev/null || echo unavailable)`"
             echo "- Self-check: `$(cat .assurance/self-check.txt 2>/dev/null || echo unavailable)`"
-            echo '- Security scan: completed'
+            echo '- Secret-pattern scan: completed'
           } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload assurance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: assurance-evidence-py${{ matrix.python-version }}-${{ github.sha }}
+          path: .assurance/
+          if-no-files-found: warn
+          retention-days: 14
