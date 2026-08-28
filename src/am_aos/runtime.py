@@ -9,6 +9,13 @@ class Decision(str,Enum):
  PASS='PASS'; CONDITIONAL_PASS='CONDITIONAL PASS'; FAIL='FAIL'; NO_GO='NO-GO'; NOT_PROVEN='NOT PROVEN'; INCONCLUSIVE='INCONCLUSIVE'; BLOCKED='BLOCKED'
 class EvidenceState(str,Enum):
  UNREPORTED='UNREPORTED'; REPORTED='REPORTED'; REPRODUCIBLE='REPRODUCIBLE'; VERIFIED='VERIFIED'; INDEPENDENTLY_VERIFIED='INDEPENDENTLY VERIFIED'; EXTERNALLY_INDEPENDENT='EXTERNALLY INDEPENDENT'
+class RegressionResult(tuple):
+    def __new__(cls, ok: bool, reason: str): return super().__new__(cls, (ok, reason))
+    @property
+    def ok(self): return self[0]
+    @property
+    def reason(self): return self[1]
+    def __bool__(self): return self.ok
 def canonical(v): return json.dumps(v,ensure_ascii=False,sort_keys=True,default=str,separators=(',',':')).encode()
 def digest(v): return sha256(canonical(v)).hexdigest()
 @dataclass(frozen=True)
@@ -72,5 +79,6 @@ class AMAOSEngine:
  def capture_regression_baseline(self): self.baseline={i:t.status for i,t in self.tasks.items() if t.status}; self.audit.append('REGRESSION_BASELINE_CAPTURED','system',count=len(self.baseline))
  def regression_check(self):
   for i,p in self.baseline.items():
-   if self.tasks[i].status!=p and p==Decision.PASS: self.audit.append('REGRESSION_FAILED',i); return False
-  self.audit.append('REGRESSION_PASSED','system'); return True
+   if self.tasks[i].status!=p and p==Decision.PASS:
+    self.audit.append('REGRESSION_FAILED',i); return RegressionResult(False,'Regression detected: '+i)
+  self.audit.append('REGRESSION_PASSED','system'); return RegressionResult(True,'Regression gate passed.')
