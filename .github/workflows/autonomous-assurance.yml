@@ -43,6 +43,19 @@ jobs:
           test -s src/am_aos/controller.py
           test -s src/am_aos/gates.py
           test -s src/am_aos/delivery.py
+          test -s src/am_aos/worker.py
+      - name: Worker smoke test
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          import tempfile
+          from am_aos.worker import SandboxWorker
+          with tempfile.TemporaryDirectory() as d:
+              result = SandboxWorker(d).execute(("python", "-c", "print('am-aos-worker-ok')"))
+              assert result.status == "PASS"
+              assert result.return_code == 0
+          PY
       - name: Produce resumable assurance marker
         run: |
           mkdir -p evidence
