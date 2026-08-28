@@ -72,5 +72,5 @@ class AMAOSEngine:
  def capture_regression_baseline(self): self.baseline={i:t.status for i,t in self.tasks.items() if t.status}; self.audit.append('REGRESSION_BASELINE_CAPTURED','system',count=len(self.baseline))
  def regression_check(self):
   for i,p in self.baseline.items():
-   if self.tasks[i].status!=p and p==Decision.PASS: self.audit.append('REGRESSION_FAILED',i); return False,'Regression detected: '+i
-  self.audit.append('REGRESSION_PASSED','system'); return True,'Regression gate passed.'
+   if self.tasks[i].status!=p and p==Decision.PASS: self.audit.append('REGRESSION_FAILED',i); return False
+  self.audit.append('REGRESSION_PASSED','system'); return True
