@@ -1,14 +1,17 @@
 from am_aos.task_queue import Task, TaskQueue
 
 
-def test_queue_persists_and_resumes(tmp_path):
+def test_queue_persists_and_recovers_running_task(tmp_path):
     p = tmp_path / "queue.json"
     q = TaskQueue(p)
     q.enqueue(Task("t1", "G3", "integration"))
     t = q.claim_next()
     assert t is not None and t.status == "RUNNING"
     q2 = TaskQueue(p)
-    assert q2.tasks[0].status == "RUNNING"
+    assert q2.tasks[0].status == "QUEUED"
+    resumed = q2.claim_next()
+    assert resumed is not None and resumed.task_id == "t1"
+    assert resumed.status == "RUNNING"
 
 
 def test_duplicate_enqueue_is_idempotent(tmp_path):
