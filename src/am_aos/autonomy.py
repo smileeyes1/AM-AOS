@@ -59,13 +59,27 @@ class AutonomousController(Generic[T]):
         checkpoint: Callable[[MissionRun[T]], None] | None = None,
     ) -> MissionRun[T]:
         started = self._clock(); run = MissionRun[T](mission_id=mission_id)
-        last_key: object | None = None
-        stagnant = 0
+        last_failed_key: object | None = None
+        stagnant_failures = 0
 
         def enter(p: Phase) -> None:
             run.phase = p; run.history.append(p)
             if checkpoint is not None:
                 checkpoint(run)
+
+        def replan_or_stop(reason: str) -> bool:
+            nonlocal last_failed_key, stagnant_failures
+            if replan is None:
+                run.stop_reason = reason; enter(Phase.STOP); return False
+            key = progress_key(run.output) if progress_key is not None else None
+            if progress_key is not None and key == last_failed_key:
+                stagnant_failures += 1
+            else:
+                stagnant_failures = 0
+            last_failed_key = key
+            if progress_key is not None and stagnant_failures >= self.limits.max_stagnant_cycles:
+                run.decision = Decision.BLOCKED; run.stop_reason = "STAGNATION"; enter(Phase.STOP); return False
+            run.replans += 1; enter(Phase.REPLAN); replan(run.output, run.decision); return True
 
         enter(Phase.UNDERSTAND); enter(Phase.EXTRACT); enter(Phase.INTEGRITY); enter(Phase.FREEZE)
         enter(Phase.EVIDENCE_PLAN); enter(Phase.RISK); enter(Phase.PLAN); plan()
@@ -74,15 +88,8 @@ class AutonomousController(Generic[T]):
             if self._clock() - started > self.limits.wall_clock_seconds:
                 run.decision = Decision.BLOCKED; run.stop_reason = "WALL_CLOCK_LIMIT"; enter(Phase.STOP); return run
 
-            run.cycles += 1; enter(Phase.EXECUTE)
-            run.output = execute()
+            run.cycles += 1; enter(Phase.EXECUTE); run.output = execute()
             enter(Phase.VERIFY); run.decision = verify(run.output)
-
-            if run.decision not in (Decision.PASS, Decision.CONDITIONAL_PASS):
-                if replan is None:
-                    run.stop_reason = "VERIFICATION_NOT_RELEASEABLE"; enter(Phase.STOP); return run
-                run.replans += 1; enter(Phase.REPLAN); replan(run.output, run.decision)
-                continue
 
             enter(Phase.BREAK)
             fault = break_test(run.output)
@@ -92,13 +99,15 @@ class AutonomousController(Generic[T]):
                 run.repairs += 1; enter(Phase.REPAIR); run.output = repair(run.output)
                 enter(Phase.REVERIFY); run.decision = verify(run.output)
                 if run.decision not in (Decision.PASS, Decision.CONDITIONAL_PASS):
-                    if replan is None:
-                        run.stop_reason = "REPAIR_REVERIFY_FAILURE"; enter(Phase.STOP); return run
-                    run.replans += 1; enter(Phase.REPLAN); replan(run.output, run.decision); continue
+                    if not replan_or_stop("REPAIR_REVERIFY_FAILURE"): return run
+                    continue
                 enter(Phase.REGRESSION)
                 if not regression(run.output):
                     run.decision = Decision.NO_GO; run.stop_reason = "REGRESSION_FAILURE"; enter(Phase.STOP); return run
             else:
+                if run.decision not in (Decision.PASS, Decision.CONDITIONAL_PASS):
+                    if not replan_or_stop("VERIFICATION_NOT_RELEASEABLE"): return run
+                    continue
                 enter(Phase.REGRESSION)
                 if not regression(run.output):
                     run.decision = Decision.NO_GO; run.stop_reason = "REGRESSION_FAILURE"; enter(Phase.STOP); return run
@@ -109,19 +118,6 @@ class AutonomousController(Generic[T]):
             enter(Phase.CLAIM_SCOPE)
             if not claim_scope(run.output):
                 run.decision = Decision.NOT_PROVEN; run.stop_reason = "CLAIM_SCOPE_FAILURE"; enter(Phase.STOP); return run
-
-            if progress_key is not None:
-                key = progress_key(run.output)
-                if key == last_key:
-                    stagnant += 1
-                else:
-                    stagnant = 0
-                last_key = key
-                if stagnant >= self.limits.max_stagnant_cycles:
-                    if replan is None:
-                        run.decision = Decision.BLOCKED; run.stop_reason = "STAGNATION"; enter(Phase.STOP); return run
-                    run.replans += 1; stagnant = 0; enter(Phase.REPLAN); replan(run.output, run.decision); continue
-
             enter(Phase.DECIDE)
             if run.decision not in (Decision.PASS, Decision.CONDITIONAL_PASS):
                 run.decision = Decision.BLOCKED if run.decision in (Decision.INCONCLUSIVE, Decision.BLOCKED) else run.decision
