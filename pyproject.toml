@@ -1,15 +1,17 @@
 [build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
-
+requires=["setuptools>=68"]
+build-backend="setuptools.build_meta"
 [project]
-name = "am-aos"
-version = "1.0.0a1"
-description = "Adaptive Mission Assurance Operating System"
-requires-python = ">=3.11"
-dependencies = []
-
+name="am-aos"
+version="1.1.0a1"
+description="Adaptive Mission Assurance Operating System"
+requires-python=">=3.11"
+dependencies=[]
+[project.scripts]
+am-aos="am_aos.__main__:main"
+[tool.setuptools.packages.find]
+where=["src"]
 [tool.pytest.ini_options]
-pythonpath = ["src"]
-testpaths = ["tests"]
-addopts = "-q"
+pythonpath=["src"]
+testpaths=["tests"]
+addopts="-q"
