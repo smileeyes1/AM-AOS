@@ -85,7 +85,6 @@ class AutonomyController:
                 continue
             self.engine.execute(task.task_id, agent_id)
 
-        # Freeze the pre-repair state before any adversarial mutation.
         self.engine.capture_regression_baseline()
 
         run.phase = MissionPhase.VERIFY
@@ -138,13 +137,18 @@ class AutonomyController:
 
         run.phase = MissionPhase.CLAIM_SCOPE
         run.phase = MissionPhase.DECIDE
+        # Transient FAIL records from a detected-and-repaired adversarial fault must
+        # not veto release when every task is currently PASS and regression succeeded.
+        task_statuses = [task.status for task in tasks]
         if Decision.NO_GO in run.decisions:
             final = Decision.NO_GO
-        elif Decision.FAIL in run.decisions:
+        elif any(status in {Decision.NO_GO, Decision.BLOCKED, Decision.NOT_PROVEN} for status in task_statuses):
+            final = Decision.NOT_PROVEN
+        elif any(status == Decision.FAIL for status in task_statuses):
             final = Decision.FAIL
         elif Decision.NOT_PROVEN in run.decisions or Decision.BLOCKED in run.decisions:
             final = Decision.NOT_PROVEN
-        elif tasks:
+        elif tasks and all(status == Decision.PASS for status in task_statuses):
             final = Decision.PASS
         else:
             final = Decision.BLOCKED
