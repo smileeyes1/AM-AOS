@@ -42,8 +42,13 @@ class AMAOSEngine:
  def create_mission(self,goal,criteria,constraints,authorities,scope=''):
   if not goal.strip() or not criteria or not authorities: raise ValueError('goal, acceptance criteria and authority ceiling are required')
   mid='mission-'+uuid4().hex; self.missions[mid]=MissionContract(mid,goal,tuple(criteria),tuple(constraints),frozenset(authorities),scope,time.time()); self.audit.append('MISSION_CREATED',mid,goal=goal,scope=scope); return mid
- def register_agent(self,agent_id:str,authorities:set[str],execute:Callable):
-  if not authorities: raise ValueError('agent requires authority')
+ def register_agent(self,agent_or_id,authorities=None,execute=None):
+  """Register either the modern (id, authorities, execute) form or the legacy Agent object."""
+  if authorities is None and execute is None and hasattr(agent_or_id,'agent_id'):
+   agent_id=agent_or_id.agent_id; authorities=agent_or_id.authorities; execute=agent_or_id.execute
+  else:
+   agent_id=agent_or_id
+  if not authorities or not callable(execute): raise ValueError('agent requires authority and callable execution')
   self.agents[agent_id]=(frozenset(authorities),execute); self.audit.append('AGENT_REGISTERED',agent_id,authorities=sorted(authorities))
  def add_task(self,mission_id,description,authority,verifier):
   m=self.missions[mission_id]
