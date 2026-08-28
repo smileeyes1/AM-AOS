@@ -37,17 +37,21 @@ class EvidenceLedger:
  def record(self,task_id,claim,value,sufficient,source,state=EvidenceState.REPORTED):
   eid='ev-'+uuid4().hex; self.items[eid]=Evidence(eid,task_id,claim,value,sufficient,source,digest(value),state); return eid
  def sufficient(self,ids): return bool(ids) and all(i in self.items and self.items[i].sufficient for i in ids)
+class VerificationGate:
+ def verify(self,task,evidence):
+  if not evidence.sufficient(task.evidence_ids): return Decision.BLOCKED,'Evidence is missing or insufficient.'
+  records=[evidence.items[i] for i in task.evidence_ids]
+  passed=any(e.value is True or e.value=='PASS' for e in records)
+  return (Decision.PASS,'Verified by sufficient evidence.') if passed else (Decision.FAIL,'Evidence does not establish success.')
 class AMAOSEngine:
- def __init__(self): self.missions={}; self.tasks={}; self.agents={}; self.evidence=EvidenceLedger(); self.audit=AuditLedger(); self.baseline={}
+ def __init__(self): self.missions={}; self.tasks={}; self.agents={}; self.evidence=EvidenceLedger(); self.audit=AuditLedger(); self.verification=VerificationGate(); self.baseline={}
  def create_mission(self,goal,criteria,constraints,authorities,scope=''):
   if not goal.strip() or not criteria or not authorities: raise ValueError('goal, acceptance criteria and authority ceiling are required')
   mid='mission-'+uuid4().hex; self.missions[mid]=MissionContract(mid,goal,tuple(criteria),tuple(constraints),frozenset(authorities),scope,time.time()); self.audit.append('MISSION_CREATED',mid,goal=goal,scope=scope); return mid
  def register_agent(self,agent_or_id,authorities=None,execute=None):
-  """Register either the modern (id, authorities, execute) form or the legacy Agent object."""
   if authorities is None and execute is None and hasattr(agent_or_id,'agent_id'):
    agent_id=agent_or_id.agent_id; authorities=agent_or_id.authorities; execute=agent_or_id.execute
-  else:
-   agent_id=agent_or_id
+  else: agent_id=agent_or_id
   if not authorities or not callable(execute): raise ValueError('agent requires authority and callable execution')
   self.agents[agent_id]=(frozenset(authorities),execute); self.audit.append('AGENT_REGISTERED',agent_id,authorities=sorted(authorities))
  def add_task(self,mission_id,description,authority,verifier):
@@ -61,10 +65,12 @@ class AMAOSEngine:
   t.attempts+=1; self.audit.append('TASK_STARTED',task_id,agent_id=agent_id,attempt=t.attempts)
   try: t.result=self.agents[agent_id][1](t)
   except Exception as exc: t.status=Decision.FAIL; self.audit.append('EXECUTION_FAILED',task_id,error=type(exc).__name__); return t.status
-  eid=self.evidence.record(task_id,'execution result',t.result,t.result is not None,'agent:'+agent_id,EvidenceState.REPRODUCIBLE); t.evidence_ids.append(eid); rec=[self.evidence.items[i] for i in t.evidence_ids]; t.status=Decision.PASS if self.evidence.sufficient(t.evidence_ids) and any(e.value is True or e.value=='PASS' for e in rec) else Decision.FAIL; self.audit.append('VERIFICATION',task_id,decision=t.status.value); return t.status
+  eid=self.evidence.record(task_id,'execution result',t.result,t.result is not None,'agent:'+agent_id,EvidenceState.REPRODUCIBLE); t.evidence_ids.append(eid); t.status,self_reason=self.verification.verify(t,self.evidence); self.audit.append('VERIFICATION',task_id,decision=t.status.value,reason=self_reason); return t.status
+ def recover(self,task_id,agent_id):
+  self.audit.append('RECOVERY_STARTED',task_id,previous=self.tasks[task_id].status.value if self.tasks[task_id].status else None); return self.execute(task_id,agent_id)
  def _reject(self,t,event): t.status=Decision.NO_GO; self.audit.append(event,t.task_id); return t.status
  def capture_regression_baseline(self): self.baseline={i:t.status for i,t in self.tasks.items() if t.status}; self.audit.append('REGRESSION_BASELINE_CAPTURED','system',count=len(self.baseline))
  def regression_check(self):
   for i,p in self.baseline.items():
-   if self.tasks[i].status!=p and p==Decision.PASS: self.audit.append('REGRESSION_FAILED',i); return False
-  self.audit.append('REGRESSION_PASSED','system'); return True
+   if self.tasks[i].status!=p and p==Decision.PASS: self.audit.append('REGRESSION_FAILED',i); return False,'Regression detected: '+i
+  self.audit.append('REGRESSION_PASSED','system'); return True,'Regression gate passed.'
