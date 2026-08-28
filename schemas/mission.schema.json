@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AM-AOS Mission Contract",
+  "type": "object",
+  "required": ["mission_id", "goal", "acceptance_criteria", "constitutional_constraints", "allowed_authorities"],
+  "properties": {
+    "mission_id": {"type": "string", "minLength": 1},
+    "goal": {"type": "string", "minLength": 1},
+    "acceptance_criteria": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "constitutional_constraints": {"type": "array", "items": {"type": "string"}},
+    "allowed_authorities": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "immutable": {"const": true}
+  },
+  "additionalProperties": false
+}
