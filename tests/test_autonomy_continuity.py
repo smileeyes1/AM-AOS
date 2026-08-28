@@ -34,18 +34,19 @@ def test_failed_verification_replans_then_releases():
     assert delivered == [2]
 
 
-def test_stagnation_is_detected_without_replan():
+def test_stagnation_is_detected_across_repeated_failed_replans():
     run = AutonomousController(AutonomyLimits(max_cycles=5, max_stagnant_cycles=1)).run(
         "m-stagnant",
         plan=lambda: None,
-        execute=lambda: "same",
-        verify=lambda _: Decision.PASS,
+        execute=lambda: "same-failure",
+        verify=lambda _: Decision.FAIL,
         break_test=lambda _: False,
         repair=lambda x: x,
         regression=lambda _: True,
         audit=lambda _: True,
         claim_scope=lambda _: True,
         release=lambda _: None,
+        replan=lambda _value, _decision: None,
         progress_key=lambda x: x,
     )
 
