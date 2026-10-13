@@ -1,0 +1,17 @@
+{
+  "schema_version": "1.0",
+  "profile_id": "am-aos-sovereign-boundary",
+  "purpose": "Stable, provider-neutral authority and assurance boundary",
+  "invariants": [
+    "goal_is_owned_by_user",
+    "mission_ceiling_cannot_expand_at_runtime",
+    "no_execution_without_explicit_authorization",
+    "critical_actions_require_external_approval",
+    "no_release_without_evidence",
+    "proven_baseline_must_be_preserved",
+    "missing_policy_or_evidence_means_no_go"
+  ],
+  "allowed_operations": ["read", "plan", "build", "test", "verify", "deliver"],
+  "approval_required_operations": ["publish", "pay", "delete", "grant_access", "change_goal", "deploy_production"],
+  "required_release_evidence": ["contract", "authority", "actual_output", "verification", "regression"]
+}
